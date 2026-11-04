@@ -3,14 +3,11 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Movie:
-    # Information from Letterboxd
+    # Movie title and year
     name: str
     year: int
-    letterboxd_uri: str = ""
-    rating_date: str = ""
-    user_rating: float = None
 
-    # Information from TMDb
+    # TMDb metadata
     tmdb_id: int = None
     imdb_id: str = None
     genres: list = field(default_factory=list)
@@ -22,46 +19,50 @@ class Movie:
     tmdb_rating: float = None
     tmdb_votes: int = None
 
-    # Information from IMDb
+    # IMDb metadata
     imdb_rating: float = None
     imdb_votes: int = None
 
-    def update_metadata(self, tmdb_data, imdb_data=None):
-        """Update movie attributes using TMDb and IMDb data."""
+    # Optional Letterboxd context
+    letterboxd_uri: str = ""
+    rating_date: str = ""
+    user_rating: float = None
 
+    def update_metadata(self, tmdb_data, imdb_data=None):
+        """Update movie attributes using TMDb details payload and IMDb dataset lookup."""
         self.tmdb_id = tmdb_data["id"]
         self.imdb_id = tmdb_data.get("imdb_id")
 
         self.genres = [
             genre["name"]
-            for genre in tmdb_data["genres"]
+            for genre in tmdb_data.get("genres", [])
         ]
 
         self.countries = [
             country["name"]
-            for country in tmdb_data["production_countries"]
+            for country in tmdb_data.get("production_countries", [])
         ]
 
         self.languages = [
-            language["english_name"]
-            for language in tmdb_data["spoken_languages"]
+            language.get("english_name") or language.get("name")
+            for language in tmdb_data.get("spoken_languages", [])
         ]
 
         self.runtime = tmdb_data.get("runtime")
         self.tmdb_rating = tmdb_data.get("vote_average")
         self.tmdb_votes = tmdb_data.get("vote_count")
 
+        credits = tmdb_data.get("credits", {})
+        crew = credits.get("crew", [])
         self.directors = [
             person["name"]
-            for person in tmdb_data["credits"]["crew"]
-            if person["job"] == "Director"
+            for person in crew
+            if person.get("job") == "Director"
         ]
 
-        cast_data = tmdb_data["credits"]["cast"]
-
+        cast_data = credits.get("cast", [])
         MAX_CAST = 25
         n = min(len(cast_data), MAX_CAST)
-
         self.cast = [
             person["name"]
             for person in cast_data[:n]

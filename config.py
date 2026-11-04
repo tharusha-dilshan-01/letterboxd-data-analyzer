@@ -7,7 +7,6 @@ load_dotenv()
 
 # API credentials
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
 
 # TMDb configuration
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
@@ -17,3 +16,8 @@ PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
 DB_PATH = DATA_DIR / "letterboxd.db"
 EXPORTS_DIR = DATA_DIR / "exports"
+
+# IMDb dataset configuration
+IMDB_DATASET_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz"
+IMDB_DIR = DATA_DIR / "imdb"
+IMDB_MAX_AGE_DAYS = 30
