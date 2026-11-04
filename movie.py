@@ -6,8 +6,9 @@ class Movie:
     # Information from Letterboxd
     name: str
     year: int
-    watched_date: str
-    user_rating: float
+    letterboxd_uri: str = ""
+    rating_date: str = ""
+    user_rating: float = None
 
     # Information from TMDb
     tmdb_id: int = None
