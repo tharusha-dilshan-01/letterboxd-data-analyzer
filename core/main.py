@@ -1,22 +1,9 @@
+import argparse
+import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-
-import pandas as pd         # External Library
-
-from config import PROJECT_DIR
-from database import (
-    get_connection,
-    create_tables,
-    set_metadata,
-    find_movie_by_uri,
-    find_movie_by_name_year,
-)
-from imdb import setup_imdb_ratings
-from tmdb import search_movie, get_movie_details, get_collection_details
-from localization import get_country_name, get_language_name
-from stats import print_stats_summary
 
 # Force UTF-8 stdout/stderr on Windows to avoid cp1252 UnicodeEncodeError
 if sys.platform == "win32":
@@ -26,25 +13,24 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import pandas as pd
 
-def find_export_folder(folder_name=None):
-    """Find the Letterboxd export folder to process."""
-    if folder_name:
-        path = PROJECT_DIR / folder_name
-        if not path.exists():
-            print(f"Error: Export folder not found: {path}")
-            sys.exit(1)
-        return path
-
-    folders = sorted(
-        [f for f in PROJECT_DIR.iterdir() if f.is_dir()],
-        reverse=True
-    )
-    if not folders:
-        print(f"Error: No export folders found in {PROJECT_DIR}")
-        sys.exit(1)
-
-    return folders[0]
+from config import EXPORTS_DIR, PROJECT_DIR
+from database import (
+    get_connection,
+    create_tables,
+    set_metadata,
+    find_movie_by_uri,
+    find_movie_by_name_year,
+)
+from imdb import setup_imdb_ratings
+from tmdb import search_movie, get_movie_details, get_collection_details
+from stats import print_stats_summary
+from export_selector import (
+    select_export_folder,
+    get_latest_export_folder,
+    save_stored_export_folder,
+)
 
 
 def step_1_setup(conn):
@@ -380,37 +366,67 @@ def step_3_tmdb_fetch(conn):
     print("=" * 60 + "\n")
 
 
-def main():
-    # --- Configuration ---
-    # Choose export folder:
-    # 1. Test folder with 10 movies:
-    # export_folder_name = "letterboxd-tharu99-2026-10-30-17-31-utc"
-    # 2. Or full folder with 341 movies:
-    export_folder_name = "letterboxd-tharu99-2026-10-29-17-31-utc"
-    # 3. Or None for the most recent export:
-    # export_folder_name = None
+def launch_dashboard():
+    """Launch the Streamlit interactive dashboard in browser."""
+    print("Launching Streamlit dashboard...")
+    dashboard_app = PROJECT_DIR / "dashboard" / "app.py"
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(dashboard_app)])
 
-    export_folder = find_export_folder(export_folder_name)
-    ratings_csv = export_folder / "ratings.csv"
-    print(f"Selected export: {export_folder.name}\n")
+
+def main():
+    parser = argparse.ArgumentParser(description="Letterboxd Data Analyzer - Ingestion Pipeline")
+    parser.add_argument("--folder", help="Specific export folder name or absolute path")
+    parser.add_argument("--latest", action="store_true", help="Automatically use the latest export folder without GUI prompt")
+    parser.add_argument("--dashboard", action="store_true", help="Launch Streamlit dashboard immediately after run")
+    args = parser.parse_args()
 
     conn = get_connection()
 
-    try:
-        # Step 1: Database Setup, Schema & IMDb Ratings
-        step_1_setup(conn)
+    # Step 1: Database Setup, Schema & IMDb Ratings
+    step_1_setup(conn)
 
+    # Determine export folder
+    export_folder = None
+    if args.folder:
+        custom_path = Path(args.folder)
+        if not custom_path.is_absolute():
+            custom_path = EXPORTS_DIR / args.folder
+        if not custom_path.exists():
+            print(f"Error: Specified export folder not found: {custom_path}")
+            sys.exit(1)
+        export_folder = custom_path
+        save_stored_export_folder(conn, export_folder)
+    elif args.latest:
+        export_folder = get_latest_export_folder()
+        if not export_folder:
+            print("Error: No export folder found.")
+            sys.exit(1)
+        save_stored_export_folder(conn, export_folder)
+    else:
+        # Prompt user using Tkinter GUI
+        export_folder = select_export_folder(conn, interactive=True)
+
+    ratings_csv = export_folder / "ratings.csv"
+    if not ratings_csv.exists():
+        print(f"Error: 'ratings.csv' not found in {export_folder}")
+        sys.exit(1)
+
+    try:
         # Step 2: Letterboxd CSV Import with active URIs
         step_2_import_csv(conn, ratings_csv)
 
         # Step 3: TMDb API Enrichment & Link Tables
         step_3_tmdb_fetch(conn)
 
-        # Step 4 & 5 Preview: Display Dashboard from active_movies
+        # Step 4 & 5 Preview: Display Dashboard summary in terminal
         print_stats_summary()
 
     finally:
         conn.close()
+
+    # If --dashboard flag requested, launch streamlit
+    if args.dashboard:
+        launch_dashboard()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,11 @@
 .venv/
 .env
 __pycache__/
+*.pyc
 .vscode/
 *.db
-letterboxd-*/
+*.db-wal
+*.db-shm
+database/*.db*
 imdb_dataset/
+data_exports/
