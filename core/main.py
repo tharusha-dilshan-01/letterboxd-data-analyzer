@@ -3,17 +3,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Force UTF-8 stdout/stderr on Windows to avoid cp1252 UnicodeEncodeError
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+import pandas as pd         # External Library
 
-import pandas as pd
-
-from config import EXPORTS_DIR
+from config import PROJECT_DIR
 from database import (
     get_connection,
     create_tables,
@@ -26,22 +18,30 @@ from tmdb import search_movie, get_movie_details, get_collection_details
 from localization import get_country_name, get_language_name
 from stats import print_stats_summary
 
+# Force UTF-8 stdout/stderr on Windows to avoid cp1252 UnicodeEncodeError
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def find_export_folder(folder_name=None):
     """Find the Letterboxd export folder to process."""
     if folder_name:
-        path = EXPORTS_DIR / folder_name
+        path = PROJECT_DIR / folder_name
         if not path.exists():
             print(f"Error: Export folder not found: {path}")
             sys.exit(1)
         return path
 
     folders = sorted(
-        [f for f in EXPORTS_DIR.iterdir() if f.is_dir()],
+        [f for f in PROJECT_DIR.iterdir() if f.is_dir()],
         reverse=True
     )
     if not folders:
-        print(f"Error: No export folders found in {EXPORTS_DIR}")
+        print(f"Error: No export folders found in {PROJECT_DIR}")
         sys.exit(1)
 
     return folders[0]
@@ -384,9 +384,9 @@ def main():
     # --- Configuration ---
     # Choose export folder:
     # 1. Test folder with 10 movies:
-    export_folder_name = "letterboxd-tharu99-2026-10-30-17-31-utc"
+    # export_folder_name = "letterboxd-tharu99-2026-10-30-17-31-utc"
     # 2. Or full folder with 341 movies:
-    # export_folder_name = "letterboxd-tharu99-2026-10-29-17-31-utc"
+    export_folder_name = "letterboxd-tharu99-2026-10-29-17-31-utc"
     # 3. Or None for the most recent export:
     # export_folder_name = None
 

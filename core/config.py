@@ -10,13 +10,15 @@ TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
 # Project paths
-PROJECT_DIR = Path(__file__).parent.resolve()
-DATA_DIR = PROJECT_DIR / "data"
-DB_PATH = DATA_DIR / "letterboxd.db"
-EXPORTS_DIR = DATA_DIR / "exports"
+PROJECT_DIR = Path(__file__).parents[1].resolve()
+DB_PATH = PROJECT_DIR / "database" / "letterboxd.db"
+
+# DATA_DIR = PROJECT_DIR / "data"
+# DB_PATH = DATA_DIR / "letterboxd.db"
+# EXPORTS_DIR = DATA_DIR / "exports"
 
 # IMDb dataset paths & settings
-IMDB_DIR = DATA_DIR / "imdb"
+IMDB_DIR = PROJECT_DIR / "imdb_dataset"
 IMDB_DATASET_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz"
 IMDB_GZ_PATH = IMDB_DIR / "title.ratings.tsv.gz"
 IMDB_TSV_PATH = IMDB_DIR / "title.ratings.tsv"
