@@ -6,6 +6,8 @@ __pycache__/
 *.db
 *.db-wal
 *.db-shm
+*.json
 database/*.db*
 imdb_dataset/
 data_exports/
+debug_folder/

@@ -12,7 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 import pandas as pd
 from database import get_connection, get_metadata
-from localization import get_country_name, get_language_name
+from core.localization import get_country_name, get_language_name
 
 
 def get_kpis():
