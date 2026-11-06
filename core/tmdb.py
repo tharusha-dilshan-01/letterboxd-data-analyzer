@@ -24,13 +24,11 @@ def _fetch_search(query: str, year=None):
         return []
 
 
-def _pick_best_match(results, target_name: str):
+def _pick_best_match(results, target_name: str, target_year: int|None):
     """Select the best match from search results:
     1. Exact title match (case-insensitive title or original_title)
     2. Highest popularity
     """
-    if not results:
-        return None
 
     clean_target = target_name.strip().lower()
 
@@ -39,17 +37,20 @@ def _pick_best_match(results, target_name: str):
         item for item in results
         if item.get("title", "").strip().lower() == clean_target
         or item.get("original_title", "").strip().lower() == clean_target
+        if not target_year
+        or str(target_year) in item.get("release_date", "")
     ]
 
-    candidates = exact_matches if exact_matches else results
+    if not exact_matches:
+        return None
 
-    # Sort candidates by popularity descending
-    sorted_candidates = sorted(
-        candidates,
+    # Sort by popularity descending
+    sorted_matches = sorted(
+        exact_matches,
         key=lambda x: float(x.get("popularity") or 0.0),
         reverse=True
     )
-    return sorted_candidates[0]["id"]
+    return sorted_matches[0]["id"]
 
 
 def search_movie(movie_name: str, movie_year: int = None):
@@ -64,21 +65,21 @@ def search_movie(movie_name: str, movie_year: int = None):
     if movie_year:
         results = _fetch_search(movie_name, movie_year)
         if results:
-            match_id = _pick_best_match(results, movie_name)
+            match_id = _pick_best_match(results, movie_name, movie_year)
             if match_id:
                 return match_id
 
         # 2. Retry with year - 1
         results_minus = _fetch_search(movie_name, movie_year - 1)
         if results_minus:
-            match_id = _pick_best_match(results_minus, movie_name)
+            match_id = _pick_best_match(results_minus, movie_name, movie_year)
             if match_id:
                 return match_id
 
         # 3. Retry with year + 1
         results_plus = _fetch_search(movie_name, movie_year + 1)
         if results_plus:
-            match_id = _pick_best_match(results_plus, movie_name)
+            match_id = _pick_best_match(results_plus, movie_name, movie_year)
             if match_id:
                 return match_id
 
