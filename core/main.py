@@ -24,8 +24,7 @@ from database import (
     find_movie_by_name_year,
 )
 from imdb import setup_imdb_ratings
-from tmdb import search_movie, get_movie_details, get_collection_details
-from stats import print_stats_summary
+from enrichment import enrich_movie
 from export_selector import (
     select_export_folder,
     get_latest_export_folder,
@@ -161,13 +160,8 @@ def step_2_import_csv(conn, csv_path: Path):
 def step_3_tmdb_fetch(conn):
     """Step 3:
     - For every row with fetch_status pending or failed:
-      - Search TMDb (retry with year ±1, exact title match preferred, then popularity)
-      - Call GET /movie/{id}?append_to_response=credits
-      - If collection_id isn't in collections or fetched_at < release date/year:
-        - Fetch collection and insert BEFORE movie row
-      - Fill link tables (movie_cast, movie_directors, movie_genres, movie_countries, people)
-      - UPDATE the existing movies row (do not insert a second row)
-      - Set fetch_status to ok, not_found, or failed.
+      - Enrich movie using enrich_movie helper (TMDb search/details, collection, people, countries, companies)
+      - Sets fetch_status to ok, not_found, or failed.
     """
     print("=" * 60)
     print("STEP 3: TMDb Metadata Enrichment & Link Tables Population")
@@ -175,183 +169,39 @@ def step_3_tmdb_fetch(conn):
 
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT movie_id, name, year, uri
+        SELECT movie_id, name, year, tmdb_id
         FROM movies
         WHERE fetch_status IN ('pending', 'failed')
+            AND is_active = 1
         ORDER BY movie_id ASC
     """)
     pending_movies = cursor.fetchall()
     total = len(pending_movies)
 
     if total == 0:
-        print("[OK] All movies already have metadata. No pending or failed movies found.\n")
+        print("[OK] All movies are updated. Nothing to fetch.\n")
         return
 
-    print(f"Found {total} movies with fetch_status of pending or failed.\n")
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    print(f"Found {total} movies to fetch.\n")
 
     success_count = 0
     not_found_count = 0
     failed_count = 0
 
-    for i, (movie_id, name, year, uri) in enumerate(pending_movies, start=1):
+    for i, (movie_id, name, year, existing_tmdb_id) in enumerate(pending_movies, start=1):
         print(f"[{i}/{total}] '{name}' ({year})...", end=" ", flush=True)
 
         try:
-            # 1. Search TMDb
-            tmdb_id = search_movie(name, year)
-            if not tmdb_id:
-                print("NOT FOUND on TMDb.")
-                cursor.execute("UPDATE movies SET fetch_status = 'not_found' WHERE movie_id = ?", (movie_id,))
-                conn.commit()
+            status = enrich_movie(conn, movie_id, name, year, existing_tmdb_id=existing_tmdb_id)
+            if status == "ok":
+                success_count += 1
+                print("[OK]")
+            elif status == "not_found":
                 not_found_count += 1
-                continue
-
-            # 2. Get movie details with credits
-            details = get_movie_details(tmdb_id)
-
-            imdb_id = details.get("imdb_id")
-            runtime = details.get("runtime")
-            original_language = details.get("original_language")
-            poster_path = details.get("poster_path")
-            backdrop_path = details.get("backdrop_path")
-            origin_country = details.get("origin_country") or []
-            genres = details.get("genres") or []
-
-            # 3. Collection handling
-            collection_info = details.get("belongs_to_collection")
-            collection_id = collection_info.get("id") if collection_info else None
-
-            if collection_id:
-                cursor.execute("SELECT fetched_at FROM collections WHERE collection_id = ?", (collection_id,))
-                coll_row = cursor.fetchone()
-
-                movie_release = details.get("release_date") or str(year)
-                needs_coll_fetch = False
-
-                if not coll_row:
-                    needs_coll_fetch = True
-                else:
-                    fetched_at = coll_row[0] or ""
-                    # If fetched_at < release_date (or year)
-                    if fetched_at[:10] < movie_release[:10]:
-                        needs_coll_fetch = True
-
-                if needs_coll_fetch:
-                    try:
-                        coll_data = get_collection_details(collection_id)
-                        coll_name = coll_data.get("name") or collection_info.get("name") or "Collection"
-                        coll_poster = coll_data.get("poster_path")
-                        coll_backdrop = coll_data.get("backdrop_path")
-                        parts = coll_data.get("parts") or []
-
-                        # Count released parts only
-                        released_parts = [
-                            p for p in parts
-                            if p.get("release_date") and p.get("release_date").strip() <= today_str
-                        ]
-                        total_movies = len(released_parts)
-                        coll_fetched_at = datetime.now().isoformat()
-
-                        # Insert collection BEFORE movie row that references it
-                        cursor.execute("""
-                            INSERT INTO collections (
-                                collection_id, collection_name, total_movies,
-                                poster_path, backdrop_path, fetched_at
-                            ) VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(collection_id) DO UPDATE SET
-                                collection_name = excluded.collection_name,
-                                total_movies = excluded.total_movies,
-                                poster_path = excluded.poster_path,
-                                backdrop_path = excluded.backdrop_path,
-                                fetched_at = excluded.fetched_at;
-                        """, (collection_id, coll_name, total_movies, coll_poster, coll_backdrop, coll_fetched_at))
-                        conn.commit()
-                    except Exception as ce:
-                        print(f" [Collection fetch note: {ce}]", end="", flush=True)
-
-            # 4. Fill people and link tables
-            credits = details.get("credits") or {}
-            raw_cast = credits.get("cast") or []
-            crew = credits.get("crew") or []
-
-            # Cast: first 25 by billing order
-            top_cast = raw_cast[:25]
-            directors = [c for c in crew if c.get("job") == "Director"]
-
-            # Insert people
-            for p in top_cast + directors:
-                pid = p.get("id")
-                pname = p.get("name")
-                profile = p.get("profile_path")
-                if pid and pname:
-                    cursor.execute("""
-                        INSERT INTO people (person_id, name, profile_paths)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(person_id) DO UPDATE SET
-                            name = excluded.name,
-                            profile_paths = COALESCE(excluded.profile_paths, people.profile_paths);
-                    """, (pid, pname, profile))
-
-            # movie_cast
-            cursor.execute("DELETE FROM movie_cast WHERE movie_id = ?", (movie_id,))
-            for idx, member in enumerate(top_cast):
-                pid = member.get("id")
-                order = member.get("order", idx)
-                if pid:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO movie_cast (movie_id, person_id, billing_order)
-                        VALUES (?, ?, ?);
-                    """, (movie_id, pid, order))
-
-            # movie_directors
-            cursor.execute("DELETE FROM movie_directors WHERE movie_id = ?", (movie_id,))
-            for d in directors:
-                pid = d.get("id")
-                if pid:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO movie_directors (movie_id, person_id)
-                        VALUES (?, ?);
-                    """, (movie_id, pid))
-
-            # movie_genres
-            cursor.execute("DELETE FROM movie_genres WHERE movie_id = ?", (movie_id,))
-            for g in genres:
-                gid = g.get("id")
-                gname = g.get("name")
-                if gid and gname:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO movie_genres (movie_id, genre_id, genre_name)
-                        VALUES (?, ?, ?);
-                    """, (movie_id, gid, gname))
-
-            # movie_countries (origin_country, not production_countries)
-            cursor.execute("DELETE FROM movie_countries WHERE movie_id = ?", (movie_id,))
-            for code in origin_country:
-                if code:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO movie_countries (movie_id, country_code)
-                        VALUES (?, ?);
-                    """, (movie_id, str(code).strip()))
-
-            # 5. UPDATE the existing movies row
-            cursor.execute("""
-                UPDATE movies SET
-                    tmdb_id = ?,
-                    imdb_id = ?,
-                    runtime = ?,
-                    original_language = ?,
-                    poster_path = ?,
-                    backdrop_path = ?,
-                    collection_id = ?,
-                    fetch_status = 'ok'
-                WHERE movie_id = ?;
-            """, (tmdb_id, imdb_id, runtime, original_language, poster_path, backdrop_path, collection_id, movie_id))
-            conn.commit()
-
-            success_count += 1
-            print(f"[OK] TMDb ID {tmdb_id}")
-
+                print("[NOT FOUND on TMDb]")
+            else:
+                failed_count += 1
+                print(f"[{status.upper()}]")
         except Exception as e:
             print(f"[FAILED] Error: {e}")
             cursor.execute("UPDATE movies SET fetch_status = 'failed' WHERE movie_id = ?", (movie_id,))
@@ -417,9 +267,6 @@ def main():
 
         # Step 3: TMDb API Enrichment & Link Tables
         step_3_tmdb_fetch(conn)
-
-        # Step 4 & 5 Preview: Display Dashboard summary in terminal
-        print_stats_summary()
 
     finally:
         conn.close()

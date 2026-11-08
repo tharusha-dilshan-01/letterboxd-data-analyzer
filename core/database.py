@@ -1,5 +1,6 @@
 import sqlite3
-from config import DB_PATH, SCHEMA_VERSION
+from migrations import run_migrations
+from config import DB_PATH
 
 
 def get_connection():
@@ -13,7 +14,7 @@ def get_connection():
 
 def create_tables(conn):
     """Create all required tables, indexes, and views if they do not exist."""
-    conn.executescript(f"""
+    conn.executescript("""
         -- App metadata key-value store
         CREATE TABLE IF NOT EXISTS app_metadata (
             key   TEXT PRIMARY KEY,
@@ -65,7 +66,22 @@ def create_tables(conn):
         CREATE TABLE IF NOT EXISTS people (
             person_id     INTEGER PRIMARY KEY,
             name          TEXT NOT NULL,
-            profile_paths TEXT
+            profile_paths TEXT,
+            gender        INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- Production companies table
+        CREATE TABLE IF NOT EXISTS companies (
+            company_id     INTEGER PRIMARY KEY,
+            name           TEXT NOT NULL,
+            logo_path      TEXT,
+            origin_country TEXT
+        );
+
+        -- Countries table
+        CREATE TABLE IF NOT EXISTS countries (
+            country_code TEXT PRIMARY KEY,
+            name         TEXT NOT NULL
         );
 
         -- Link tables
@@ -78,7 +94,7 @@ def create_tables(conn):
             FOREIGN KEY (person_id) REFERENCES people(person_id) ON DELETE CASCADE
         );
 
-        -- Ensure billing order index for cast queries
+        -- Index for fast cast billing queries
         CREATE INDEX IF NOT EXISTS idx_cast_movie_billing ON movie_cast(movie_id, billing_order);
 
         CREATE TABLE IF NOT EXISTS movie_directors (
@@ -104,6 +120,14 @@ def create_tables(conn):
             FOREIGN KEY (movie_id) REFERENCES movies(movie_id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS movie_companies (
+            movie_id   INTEGER NOT NULL,
+            company_id INTEGER NOT NULL,
+            PRIMARY KEY (movie_id, company_id),
+            FOREIGN KEY (movie_id) REFERENCES movies(movie_id) ON DELETE CASCADE,
+            FOREIGN KEY (company_id) REFERENCES companies(company_id) ON DELETE CASCADE
+        );
+
         -- Indexes for fast lookups
         CREATE INDEX IF NOT EXISTS idx_movies_uri ON movies(uri);
         CREATE INDEX IF NOT EXISTS idx_movies_name_year ON movies(name, year);
@@ -112,11 +136,13 @@ def create_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_movies_is_active ON movies(is_active);
         CREATE INDEX IF NOT EXISTS idx_movie_genres_name ON movie_genres(genre_name);
         CREATE INDEX IF NOT EXISTS idx_movie_countries_code ON movie_countries(country_code);
+        CREATE INDEX IF NOT EXISTS idx_movie_companies_company ON movie_companies(company_id);
     """)
 
-    # Record schema version
-    set_metadata(conn, "schema_version", SCHEMA_VERSION)
     conn.commit()
+
+    # Upgrade database if schema has changed
+    run_migrations(conn)
 
 
 def get_metadata(conn, key):

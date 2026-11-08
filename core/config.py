@@ -22,4 +22,9 @@ IMDB_TSV_PATH = IMDB_DIR / "title.ratings.tsv"
 IMDB_MAX_AGE_DAYS = 30
 
 # Schema version
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+
+# Cast selection rule: max(min(30% of total cast, 25), 10)
+CAST_FRACTION = 0.30
+CAST_MAX = 25
+CAST_MIN = 10
