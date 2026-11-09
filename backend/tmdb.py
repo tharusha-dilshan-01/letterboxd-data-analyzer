@@ -1,5 +1,5 @@
 import requests
-from config import TMDB_TOKEN, TMDB_BASE_URL
+from core.config import TMDB_TOKEN, TMDB_BASE_URL
 
 # Standard headers for TMDb v3 API
 headers = {

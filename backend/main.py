@@ -15,17 +15,17 @@ if sys.platform == "win32":
 
 import pandas as pd
 
-from config import EXPORTS_DIR, PROJECT_DIR
-from database import (
+from core.config import EXPORTS_DIR, PROJECT_DIR
+from core.database import (
     get_connection,
     create_tables,
     set_metadata,
     find_movie_by_uri,
     find_movie_by_name_year,
 )
-from imdb import setup_imdb_ratings
-from enrichment import enrich_movie
-from export_selector import (
+from core.imdb import setup_imdb_ratings
+from core.enrichment import enrich_movie
+from core.export_selector import (
     select_export_folder,
     get_latest_export_folder,
     save_stored_export_folder,

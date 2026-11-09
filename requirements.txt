@@ -2,5 +2,3 @@ requests
 python-dotenv
 pandas
 pycountry
-streamlit
-plotly

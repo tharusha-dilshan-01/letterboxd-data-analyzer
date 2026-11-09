@@ -1,6 +1,7 @@
 import sqlite3
-from migrations import run_migrations
-from config import DB_PATH
+
+from core.migrations import run_migrations
+from core.config import DB_PATH
 
 
 def get_connection():
