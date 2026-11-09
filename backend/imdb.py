@@ -6,14 +6,14 @@ from datetime import datetime
 from pathlib import Path
 import requests
 
-from config import (
+from core.config import (
     IMDB_DIR,
     IMDB_DATASET_URL,
     IMDB_GZ_PATH,
     IMDB_TSV_PATH,
     IMDB_MAX_AGE_DAYS,
 )
-from database import get_metadata, set_metadata
+from core.database import get_metadata, set_metadata
 
 
 def gunzip_file(gz_path: Path, tsv_path: Path):

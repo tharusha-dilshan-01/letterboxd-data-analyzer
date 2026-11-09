@@ -1,4 +1,4 @@
-from config import SCHEMA_VERSION
+from core.config import SCHEMA_VERSION
 
 
 def _column_exists(conn, table, column):

@@ -1,8 +1,8 @@
 import math
 from datetime import datetime
 
-from config import CAST_FRACTION, CAST_MAX, CAST_MIN
-from tmdb import search_movie, get_movie_details, get_collection_details
+from core.config import CAST_FRACTION, CAST_MAX, CAST_MIN
+from core.tmdb import search_movie, get_movie_details, get_collection_details
 
 
 def save_collection(cursor, collection_id, collection_info, movie_year, release_date):

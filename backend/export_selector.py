@@ -6,8 +6,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from config import EXPORTS_DIR
-from database import get_metadata, set_metadata
+from core.config import EXPORTS_DIR
+from core.database import get_metadata, set_metadata
 
 SETTINGS_FILE = EXPORTS_DIR / "export_settings.json"
 
